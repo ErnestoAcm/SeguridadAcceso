@@ -15,9 +15,5 @@ class BD
     {
         $usuario->save();
     }
-    public function guardarUsuario($usuario)
-{
-    $usuario->save();
-}
 
 }

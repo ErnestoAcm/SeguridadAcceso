@@ -106,14 +106,14 @@ class autenticacion
                 return ['success' => false, 'message' => 'El correo ya está registrado.'];
             }
 
-            $usuario = new \App\Models\Usuario([
+            $usuario = new Usuario([
                 'correo' => $correo,
                 'nip' => $password,
                 'intentos' => 0,
                 'Conectado' => false,
             ]);
 
-            $this->bd->guardarUsuario($usuario);
+            $this->bd->actualizarUsuario($usuario);
 
             return ['success' => true, 'message' => 'Usuario registrado exitosamente.'];
         });
