@@ -11,9 +11,10 @@ class BD
         return Usuario::where('correo', $correo)->lockForUpdate()->first();
     }
 
-    public function actualizarUsuario($usuario)
+    public function grabar($usuario)
     {
         $usuario->save();
     }
+
 
 }

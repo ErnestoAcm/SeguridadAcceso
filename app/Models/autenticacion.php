@@ -18,52 +18,45 @@ class autenticacion
     {
         return DB::transaction(function () use ($correo, $nip) {
             $usuario = $this->bd->obtenerUsuarioPorCorreo($correo);
-
             if (!$usuario) {
                 return ['success' => false, 'message' => 'Usuario no encontrado.'];
             }
 
-            if ($usuario->concurrencia) {
+            if ($usuario->getEnProceso()) {
                 return ['success' => false, 'message' => 'El usuario está siendo procesado. Intente nuevamente.'];
             }
 
-            $usuario->concurrencia = true;
-            $this->bd->actualizarUsuario($usuario);
+            $usuario->setEnProceso(true);
+            $this->bd->grabar($usuario);
 
             try {
-                if ($usuario->intentos >= 3) {
-                    $tiempoBloqueo = $usuario->updated_at->addMinutes(30);
+                if ($usuario->getIntentos() >= 3) {
+                    $tiempoBloqueo = $usuario->getUpdatedAt()->addMinutes(30);
                     if (now()->greaterThanOrEqualTo($tiempoBloqueo)) {
-                        $this->reiniciarIntentos($usuario);
-                        $this->bd->actualizarUsuario($usuario);
+                        $usuario->setIntentos(0);
                     } else {
                         return ['success' => false, 'message' => 'Cuenta bloqueada. Intente nuevamente después de 30 minutos.'];
                     }
                 }
 
-                if (!$this->verificarNip($usuario, $nip)) {
-                    $usuario->intentos += 1;
-
-                    if ($usuario->intentos >= 3) {
-                        $this->bloquear($usuario);
-                    }
-
-                    $this->bd->actualizarUsuario($usuario);
+                if (!$usuario->verificarNip($nip)) {
+                    $this->agregarintentos($usuario);
                     return ['success' => false, 'message' => 'Credenciales incorrectas.'];
                 }
 
-                if ($usuario->Conectado) {
+                if ($usuario->getConectado()) {
+                    $this->agregarintentos($usuario);
                     return ['success' => false, 'message' => 'El usuario ya está conectado.'];
                 }
 
-                $this->reiniciarIntentos($usuario);
-                $this->conectar($usuario);
-                $this->bd->actualizarUsuario($usuario);
+                $usuario->setIntentos(0);
+                $usuario->setConectado(true);
+                $this->bd->grabar($usuario);
 
                 return ['success' => true, 'message' => 'Inicio de sesión exitoso.'];
-            } finally {
-                $usuario->concurrencia = false;
-                $this->bd->actualizarUsuario($usuario);
+            }finally {
+                $usuario->setEnProceso(false);
+                $this->bd->grabar($usuario);
             }
         });
     }
@@ -77,25 +70,24 @@ class autenticacion
                 return ['success' => false, 'message' => 'Usuario no encontrado.'];
             }
 
-            if ($usuario->concurrencia) {
+            if ($usuario->getEnProceso()) {
                 return ['success' => false, 'message' => 'El usuario está siendo procesado. Intente nuevamente.'];
             }
 
-            $usuario->concurrencia = true;
-            $this->bd->actualizarUsuario($usuario);
+            $usuario->setEnProceso(true);
+            $this->bd->grabar($usuario);
 
             try {
-                $this->desconectar($usuario);
-                $this->bd->actualizarUsuario($usuario);
+                $usuario->desconectar();
+                $this->bd->grabar($usuario);
 
                 return ['success' => true, 'message' => 'Sesión cerrada correctamente.'];
             } finally {
-                $usuario->concurrencia = false;
-                $this->bd->actualizarUsuario($usuario);
+                $usuario->setEnProceso(false);
+                $this->bd->grabar($usuario);
             }
         });
     }
-
 
     public function registrarUsuario($correo, $password)
     {
@@ -106,42 +98,26 @@ class autenticacion
                 return ['success' => false, 'message' => 'El correo ya está registrado.'];
             }
 
-            $usuario = new Usuario([
-                'correo' => $correo,
-                'nip' => $password,
-                'intentos' => 0,
-                'Conectado' => false,
-            ]);
+            $usuario = new Usuario();
+            $usuario->setCorreo($correo);
+            $usuario->setNip($password);
+            $usuario->setIntentos(0);
+            $usuario->setConectado(false);
 
-            $this->bd->actualizarUsuario($usuario);
+            $this->bd->grabar($usuario);
 
             return ['success' => true, 'message' => 'Usuario registrado exitosamente.'];
         });
     }
-
-    private function verificarNip($usuario, $nip)
+    public function agregarintentos(usuario $usuario)
     {
-        return password_verify($nip, $usuario->nip);
+    $usuario->setIntentos($usuario->getIntentos() + 1);
+                    if ($usuario->getIntentos() >= 3) {
+                        $usuario->bloquear();
+                    }
+                    $this->bd->grabar($usuario);
+                    return;
     }
 
-    private function bloquear($usuario)
-    {
-        $usuario->intentos = 3;
-        $usuario->updated_at = now()->addMinutes(30);
-    }
 
-    private function reiniciarIntentos($usuario)
-    {
-        $usuario->intentos = 0;
-    }
-
-    private function conectar($usuario)
-    {
-        $usuario->Conectado = true;
-    }
-
-    private function desconectar($usuario)
-    {
-        $usuario->Conectado = false;
-    }
 }
